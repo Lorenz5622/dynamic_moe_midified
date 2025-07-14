@@ -24,7 +24,7 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-import json
+
 
 from transformers import PreTrainedModel
 from transformers.activations import ACT2FN
@@ -154,6 +154,9 @@ class LlamaMLP(nn.Module):
     def forward(self, x):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
+
+
+
 def top_p_sampling_batched_all_sequence(logits, top_p=0.9, temperature=1.0):
     """
     Apply Top-p sampling to every element in the sequence for each item in the batch.
@@ -203,7 +206,11 @@ class SwitchMLP(nn.Module):
         else:
             self.mlp = LlamaMLP(config.hidden_size, config.intermediate_size, config.hidden_act)
         
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, layer_idx):
+        fixed_k = [8,8,8,7,7,6,6,6,5,5,4,4,3,3,2,2,3,2,1,1,1,2,1,1,1,2,1,1,1,1,1,1]
+
+        cur_k = 4
+        # print(cur_k)
         if not self.use_switch:
             output = self.mlp(hidden_states)
             return output
@@ -216,7 +223,8 @@ class SwitchMLP(nn.Module):
         route = torch.nn.functional.softmax(route, dim=2)
         
 
-        topk_weights, topk_ind = top_p_sampling_batched_all_sequence(route, self.top_p_threshold)
+        # topk_weights, topk_ind = top_p_sampling_batched_all_sequence(route, self.top_p_threshold)
+        topk_weights, topk_ind = torch.topk(route, cur_k)
         
 
         hidden_states = hidden_states.view(-1, hidden_states.size(2)) 
@@ -346,6 +354,7 @@ class LlamaDecoderLayer(nn.Module):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        layer_idx: int  = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Args:
@@ -381,11 +390,11 @@ class LlamaDecoderLayer(nn.Module):
         residual = hidden_states
         # hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.post_attention_norm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
+        hidden_states = self.mlp(hidden_states, layer_idx)
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
-        print("DecoderLayer.forward(): outputs", outputs)
+
         if output_attentions:
             outputs += (self_attn_weights,)
 
@@ -653,6 +662,7 @@ class MoEModel(MoEPreTrainedModel):
                     past_key_value=past_key_value,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
+                    layer_idx = idx,
                 )
 
             hidden_states = layer_outputs[0]
@@ -669,8 +679,6 @@ class MoEModel(MoEPreTrainedModel):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        print("MoEModel.forward(): hidden_states : ", hidden_states)
-        print("MoEModel.forward(): past_key_values : ", past_key_values)
         next_cache = next_decoder_cache if use_cache else None
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
@@ -687,8 +695,6 @@ class MoEForCausalLM(MoEPreTrainedModel):
         self.model = MoEModel(config)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
-        from transformers import AutoTokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained("/mnt/data/models/Dynamic_moe", use_fast=False)
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -769,13 +775,8 @@ class MoEForCausalLM(MoEPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        # 传过来的是 MoEModel.forward(): hidden_states
         hidden_states = outputs[0]
         logits = self.lm_head(hidden_states)
-
-        print("logits: ", logits)
-
-        
 
         loss = None
         if labels is not None:
@@ -854,76 +855,6 @@ class MoEForCausalLM(MoEPreTrainedModel):
     """,
     LLAMA_START_DOCSTRING,
 )
-
-def checkTokenFromLogits(logits, input_ids):
-    import torch
-    from transformers import AutoTokenizer, LogitsProcessorList, TopPLogitsWarper, LogitsWarper, TopKLogitsWarper
-    
-    # Step 1: 只取最后一个 token 对应的 logits，shape: (1, 32000)
-    next_token_logits = logits[:, -1, :]
-    saveTensorToJson(next_token_logits, "next_token_logits.json")
-
-    # Step 2: 设置 Logits 处理器（Top-p + Temperature）
-    logits_processor = LogitsProcessorList([
-        TopKLogitsWarper(top_k=50),
-        TopPLogitsWarper(top_p=0.9),
-    ])
-    
-    processed_logits = next_token_logits
-    print("next_token_scores : ", processed_logits)
-    # Step 4: 应用处理器（Top-p）
-    processed_logits = logits_processor(input_ids, next_token_logits)
-    saveTensorToJson(processed_logits, "processed_logits.json")
-    print("input_ids : ", input_ids)
-    # 找出不是 -inf 的元素的布尔掩码
-
-    not_inf_mask = torch.isfinite(processed_logits)  # 检查是否是有限数（既不是 inf 也不是 -inf）
-
-    # 获取非 -inf 元素的索引
-    values = processed_logits[not_inf_mask].tolist()
-
-    print("非 -inf 的值:", values)
-
-    # Step 5: 转换为概率分布并采样
-    probs = nn.functional.softmax(processed_logits, dim=-1)
-    saveTensorToJson(probs, "probs.json")
-    # 检查是否是有限数（既不是 inf 也不是 -inf）
-    # 将张量移动到CPU以便处理
-    probs_cpu = probs.cpu()
-    # 创建布尔掩码，过滤掉 inf 和 -inf 的值
-    finite_mask = torch.isfinite(probs_cpu)
-    # 创建布尔掩码，过滤掉 0 的值
-    non_zero_mask = probs_cpu != 0.0
-    # 结合两个掩码
-    valid_mask = finite_mask & non_zero_mask
-    # 提取符合条件的值
-    valid_values = probs_cpu[valid_mask].tolist()
-
-    print("非 0 的值:", valid_values)
-    valid_indices = torch.nonzero(valid_mask, as_tuple=True)[1].tolist()  # 获取非零位置的列索引
-    
-    print("非 0 的值索引:", valid_indices)
-
-    next_token_id = torch.multinomial(probs, num_samples=1).squeeze(1)
-    saveTensorToJson(next_token_id, "next_token_id.json")
-
-    print("next_tokens : ",next_token_id)
-    unfinished_sequences = torch.ones(1, dtype=torch.long, device=input_ids.device)
-    next_token_id = next_token_id * unfinished_sequences + 0 * (1 - unfinished_sequences)
-
-    # Step 6: 加载 Tokenizer 并解码
-    tokenizer = AutoTokenizer.from_pretrained("/mnt/data/models/Dynamic_moe", use_fast=False)  # 替换为你的 tokenizer 路径
-    token = tokenizer.decode(next_token_id, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-
-    # print("Next Token ID:", next_token_id.item())
-    print( "self-defined token: ", token)
-
-def saveTensorToJson(tensor, path):
-    path = '/root/' + path
-    with open(path, 'w') as f:
-        json.dump(tensor.tolist(), f)
-
-
 class LlamaForSequenceClassification(MoEPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"lm_head.weight"]
 

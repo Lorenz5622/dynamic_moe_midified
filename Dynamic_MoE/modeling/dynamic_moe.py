@@ -3,8 +3,8 @@ from opencompass.models import HuggingFaceCausalLM
 models = [
     dict(
         type=HuggingFaceCausalLM,
-        path='/mnt/data/models/Dynamic_moe',
-        tokenizer_path='/mnt/data/models/Dynamic_moe',
+        path='/mnt/data/models/dynamic_moe',
+        tokenizer_path='/mnt/data/models/dynamic_moe',
         model_kwargs=dict(
             trust_remote_code=True,
             device_map='auto',
