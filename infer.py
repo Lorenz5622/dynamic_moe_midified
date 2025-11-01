@@ -10,17 +10,10 @@ import numpy as np
 import os
 from datetime import datetime
 N_GENERATIONS = 500
-<<<<<<< Updated upstream
-CROSSOVER_RATE = 0.7
-MUTATION_RATE = 0.05
-MAX_DATASET_COUNT = 60
-MAX_DATASET_EPOCHS = 1
-=======
-CROSSOVER_RATE = 0.5
-MUTATION_RATE = 0.06
+CROSSOVER_RATE = 0.6
+MUTATION_RATE = 0.08
 MAX_DATASET_COUNT = 120
 MAX_DATASET_EPOCHS = 30
->>>>>>> Stashed changes
 INDIVIDUAL_COUNT = 30
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 def generate(tokenizer, model, text, dynamic_k=None):
@@ -289,7 +282,7 @@ if __name__ == "__main__":
             ga.write_to_record(record_file, gen_count)
         pop = ga.select(
             elite_rate = 0.1,
-            diversity_threshold = 0.3,
+            diversity_threshold = 0.1,
             cross_rate = CROSSOVER_RATE,
             mutation_rate = MUTATION_RATE
         )  # 选择生成新的种群
