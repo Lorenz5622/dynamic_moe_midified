@@ -10,10 +10,17 @@ import numpy as np
 import os
 from datetime import datetime
 N_GENERATIONS = 500
+<<<<<<< Updated upstream
 CROSSOVER_RATE = 0.7
 MUTATION_RATE = 0.05
 MAX_DATASET_COUNT = 60
 MAX_DATASET_EPOCHS = 1
+=======
+CROSSOVER_RATE = 0.5
+MUTATION_RATE = 0.06
+MAX_DATASET_COUNT = 120
+MAX_DATASET_EPOCHS = 30
+>>>>>>> Stashed changes
 INDIVIDUAL_COUNT = 30
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 def generate(tokenizer, model, text, dynamic_k=None):
