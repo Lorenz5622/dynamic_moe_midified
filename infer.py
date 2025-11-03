@@ -12,9 +12,12 @@ from datetime import datetime
 N_GENERATIONS = 500
 CROSSOVER_RATE = 0.6
 MUTATION_RATE = 0.08
+
 MAX_DATASET_COUNT = 150
 MAX_DATASET_EPOCHS = 40
+
 INDIVIDUAL_COUNT = 30
+PATH_PREFIX = "/root"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 def generate(tokenizer, model, text, dynamic_k=None):
     inputs = [text]
@@ -147,8 +150,8 @@ def analysis_piqa(line_json, line_label):
     return prompt
 
 def random_n_dataset(file_json, file_label):
-    output_data = f'/root/datasets/piqa/sampled_{MAX_DATASET_COUNT*MAX_DATASET_EPOCHS}_data.jsonl'
-    output_label = f'/root/datasets/piqa/sampled_{MAX_DATASET_COUNT*MAX_DATASET_EPOCHS}_labels.lst'
+    output_data = f'{PATH_PREFIX}/datasets/piqa/sampled_{MAX_DATASET_COUNT*MAX_DATASET_EPOCHS}_data.jsonl'
+    output_label = f'{PATH_PREFIX}/datasets/piqa/sampled_{MAX_DATASET_COUNT*MAX_DATASET_EPOCHS}_labels.lst'
 
     # 读取数据和标签，并构建成 pairs
     with open(file_json, 'r', encoding='utf-8') as f_json, \
@@ -173,7 +176,9 @@ def random_n_dataset(file_json, file_label):
     return output_data, output_label
 
 if __name__ == "__main__":
-    model_path = '/root/models/Dynamic_MoE'
+    if os.path.exists("/home/cyx") :
+        PATH_PREFIX = "/home/cyx"
+    model_path = f'{PATH_PREFIX}/models/Dynamic_MoE'
     now = datetime.now().strftime("%Y%m%d_%H%M%S")  # 例如：20251007_213015
 
     # 构造文件名
@@ -192,12 +197,12 @@ if __name__ == "__main__":
     model.eval()
     model = torch.compile(model, mode="reduce-overhead", fullgraph=True)
     hidden_layers = 0
-    with open('/root/models/Dynamic_MoE/config.json', 'r', encoding='utf-8') as file:
+    with open(f'{PATH_PREFIX}/models/Dynamic_MoE/config.json', 'r', encoding='utf-8') as file:
         data = json.load(file)
         hidden_layers = data['num_hidden_layers']
 
-    file_json = '/root/datasets/piqa/train.jsonl'   # 第一个文件路径
-    file_label = '/root/datasets/piqa/train-labels.lst'  # 第二个文件路径
+    file_json = f'{PATH_PREFIX}/datasets/piqa/train.jsonl'   # 第一个文件路径
+    file_label = f'{PATH_PREFIX}/datasets/piqa/train-labels.lst'  # 第二个文件路径
     file_json, file_label = random_n_dataset(file_json, file_label)
 
     print(file_json, file_label,)
