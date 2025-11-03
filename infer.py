@@ -12,8 +12,8 @@ from datetime import datetime
 N_GENERATIONS = 500
 CROSSOVER_RATE = 0.6
 MUTATION_RATE = 0.08
-MAX_DATASET_COUNT = 120
-MAX_DATASET_EPOCHS = 30
+MAX_DATASET_COUNT = 150
+MAX_DATASET_EPOCHS = 40
 INDIVIDUAL_COUNT = 30
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 def generate(tokenizer, model, text, dynamic_k=None):
